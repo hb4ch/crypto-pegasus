@@ -28,5 +28,5 @@ class BacktestConfig(BaseModel):
     trailing_stop_pct: float | None = None
 
     # DuckDB resource limits
-    duckdb_threads: int = 6
-    duckdb_memory_limit: str = "8GB"
+    duckdb_threads: int = 16
+    duckdb_memory_limit: str = "16GB"

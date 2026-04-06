@@ -9,6 +9,24 @@ import pandas as pd
 from pegasus.config import BacktestConfig
 
 # Mapping from user-friendly timeframe strings to DuckDB interval syntax.
+def _hive_partition_filter(start: str | datetime, end: str | datetime) -> str:
+    """SQL predicate on hive year/month columns for partition pruning."""
+    s = datetime.fromisoformat(str(start))
+    e = datetime.fromisoformat(str(end))
+    pairs = []
+    cur = s.replace(day=1)
+    while cur < e:
+        pairs.append((cur.year, cur.month))
+        if cur.month == 12:
+            cur = cur.replace(year=cur.year + 1, month=1)
+        else:
+            cur = cur.replace(month=cur.month + 1)
+    if not pairs:
+        return "TRUE"
+    clauses = ", ".join(f"({y}, '{m:02d}')" for y, m in pairs)
+    return f"(year, month) IN ({clauses})"
+
+
 _TIMEFRAME_MAP = {
     "1min": "1 minute",
     "5min": "5 minutes",
@@ -63,6 +81,8 @@ class DataProvider:
 
         parquet_glob = str(self.data_root / symbol / "year=*/month=*/data.parquet")
 
+        partition_filter = _hive_partition_filter(start, end)
+
         query = f"""
             SELECT
                 time_bucket(INTERVAL '{interval}', datetime) AS bar_time,
@@ -76,7 +96,8 @@ class DataProvider:
                 sum(price * quantity) / sum(quantity)          AS vwap,
                 count(*)::INTEGER                             AS trade_count
             FROM read_parquet('{parquet_glob}', hive_partitioning=true)
-            WHERE datetime >= $start AND datetime < $end
+            WHERE {partition_filter}
+              AND datetime >= $start AND datetime < $end
             GROUP BY bar_time
             ORDER BY bar_time
         """
