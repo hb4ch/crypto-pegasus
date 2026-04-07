@@ -30,3 +30,6 @@ class BacktestConfig(BaseModel):
     # DuckDB resource limits
     duckdb_threads: int = 16
     duckdb_memory_limit: str = "16GB"
+
+    # Bar cache directory (None = no caching, always aggregate from ticks)
+    bar_cache_dir: Path | None = Path("/mnt/SATASSDEXT4/bar_cache")

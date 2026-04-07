@@ -72,6 +72,11 @@ class DataProvider:
 
         Returns a DataFrame indexed by ``bar_time`` with columns:
         open, high, low, close, volume, buy_volume, vwap, trade_count.
+
+        When ``bar_cache_dir`` is configured, bars are cached as parquet
+        files keyed by symbol and timeframe.  The first call aggregates
+        from raw ticks and writes the cache; subsequent calls read from
+        the cache and slice by [start, end).
         """
         interval = _TIMEFRAME_MAP.get(timeframe)
         if interval is None:
@@ -79,6 +84,57 @@ class DataProvider:
                 f"Unknown timeframe {timeframe!r}. Choose from {list(_TIMEFRAME_MAP)}"
             )
 
+        cache_dir = self.config.bar_cache_dir
+        if cache_dir is not None:
+            cache_path = cache_dir / f"{symbol}_{timeframe}.parquet"
+            if cache_path.exists():
+                df = pd.read_parquet(cache_path)
+                df.index.name = "datetime"
+                return df.loc[str(start):str(end)]
+
+        # Aggregate from raw ticks
+        df = self._aggregate_bars(symbol, start, end, interval, timeframe)
+
+        return df
+
+    def materialize(
+        self,
+        symbol: str,
+        start: str | datetime,
+        end: str | datetime,
+        timeframe: str = "5min",
+    ) -> Path:
+        """Aggregate bars from raw ticks and write to the bar cache.
+
+        Returns the cache file path.  Subsequent ``get_bars()`` calls
+        for the same symbol/timeframe will read from cache.
+        """
+        interval = _TIMEFRAME_MAP.get(timeframe)
+        if interval is None:
+            raise ValueError(
+                f"Unknown timeframe {timeframe!r}. Choose from {list(_TIMEFRAME_MAP)}"
+            )
+
+        cache_dir = self.config.bar_cache_dir
+        if cache_dir is None:
+            raise ValueError("bar_cache_dir is not configured")
+
+        df = self._aggregate_bars(symbol, start, end, interval, timeframe)
+
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = cache_dir / f"{symbol}_{timeframe}.parquet"
+        df.to_parquet(cache_path)
+        return cache_path
+
+    def _aggregate_bars(
+        self,
+        symbol: str,
+        start: str | datetime,
+        end: str | datetime,
+        interval: str,
+        timeframe: str,
+    ) -> pd.DataFrame:
+        """Run the DuckDB aggregation query on raw tick parquet."""
         parquet_glob = str(self.data_root / symbol / "year=*/month=*/data.parquet")
 
         partition_filter = _hive_partition_filter(start, end)
