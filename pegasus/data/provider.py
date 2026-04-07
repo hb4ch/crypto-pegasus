@@ -87,7 +87,7 @@ class DataProvider:
         cache_dir = self.config.bar_cache_dir
         if cache_dir is not None:
             cache_path = cache_dir / f"{symbol}_{timeframe}.parquet"
-            if cache_path.exists():
+            if cache_path.exists() and not self._cache_stale(symbol, cache_path):
                 df = pd.read_parquet(cache_path)
                 df.index.name = "datetime"
                 return df.loc[str(start):str(end)]
@@ -168,6 +168,19 @@ class DataProvider:
         df = df.set_index("bar_time")
         df.index.name = "datetime"
         return df
+
+    def _cache_stale(self, symbol: str, cache_path: Path) -> bool:
+        """Check if cached bars are stale by comparing cache mtime to latest raw data mtime."""
+        symbol_dir = self.data_root / symbol
+        if not symbol_dir.exists():
+            return False
+        # Find the newest raw parquet file for this symbol
+        raw_files = list(symbol_dir.rglob("data.parquet"))
+        if not raw_files:
+            return False
+        latest_raw_mtime = max(f.stat().st_mtime for f in raw_files)
+        cache_mtime = cache_path.stat().st_mtime
+        return latest_raw_mtime > cache_mtime
 
     def get_symbols(self) -> list[str]:
         """Discover available symbols from the directory structure."""
