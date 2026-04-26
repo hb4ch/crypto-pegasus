@@ -8,8 +8,11 @@ from pydantic import BaseModel
 class BacktestConfig(BaseModel):
     """Centralized backtest configuration."""
 
-    # Data source
-    data_root: Path = Path.home() / "solana-pegasus/data/parquet/spot/aggTrades"
+    # Data source — solana-pegasus multi-source ETL emits at:
+    #   data/parquet/{provider}/{dataset}/{source}/{key}/year=*/month=*/data.parquet
+    # For aggTrades (spot OHLCV ticks): provider=binance, dataset=aggTrades,
+    # source=binance_aggtrades, key=symbol.
+    data_root: Path = Path.home() / "solana-pegasus/data/parquet/binance/aggTrades/binance_aggtrades"
     symbols: list[str] = ["ETHUSDT", "BTCUSDT", "SOLUSDT", "BNBUSDT"]
 
     # Backtest parameters
